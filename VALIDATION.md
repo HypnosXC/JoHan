@@ -33,3 +33,14 @@ reference-sampler comparisons passed again. The saved real-video artifact
 contains four valid observations with finite pose, shape, orientation,
 translation and 2D joints, and nonzero translations. The real-video pipeline
 was not rerun at this final cleanup commit.
+
+Direct trained-backbone loading was verified at commit `9cf8e12` in CPU Slurm
+job 421271 (completed, exit code 0). Features from one 512-pixel input matched
+exactly between the former pretrained-then-fine-tuned loader and the new
+architecture-only initialization followed by strict fine-tuned loading.
+Package/geometry/window checks and actual hand-weight sampling also passed.
+A two-frame real-video run produced four finite hand observations using only
+the paired trained weights and YAML configurations: no original DINOv3 weights,
+train_meta.json or checksum manifest were supplied to that inference run.
+Coordinate scale is read directly from model_config.yaml. This check does not
+establish GPU performance or full-video accuracy.
