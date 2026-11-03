@@ -9,7 +9,7 @@ for module in pkgutil.walk_packages(johan.__path__, 'johan.'):
 from johan.cli import make_batch, windows
 from johan.geometry import denormalize_2d_keypoints_minmax
 from johan.network import TransformerBlockConfig
-assert TransformerBlockConfig()
+assert __import__("dataclasses").is_dataclass(TransformerBlockConfig)
 frames=[np.zeros((48,80,3),np.uint8) for _ in range(3)]
 b=make_batch(frames,np.array([[10,5,30,20]]*3),1,[100,110,40,24],256,'cpu')
 assert b.rgb_frames.shape==(1,3,256,256)

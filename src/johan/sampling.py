@@ -185,7 +185,6 @@ def sample_hand(
     denoiser_network,
     train_batch,
     device,
-    visualized: bool = True,
     start_frame: int = 0,
     training_mode: str = "diffusion",
     num_flow_steps: int = 10,
@@ -198,11 +197,8 @@ def sample_hand(
     infer_window: int = 128,
     bbox_mask_square: bool = False,
     bbox_mask_scale: float = 1.0,
-    viz_out_dir: str | None = None,
-    global_pose_source: str = "gt",
-    refine_3d_from_2d: bool = False,
 ):
-    """Run denoising sampling and optionally visualize.
+    """Run hand denoising sampling; global pose is recovered separately by PnP.
 
     Args:
         use_legacy_global_bbox: If True, use global bbox for 2D pose denormalization
