@@ -1,7 +1,8 @@
 # Validation
 
 Target: the current ViT-H/512 model, source `2ff60ef`, v3 step 145000 RAW.
-Inference implementation tested at commit `d56c223`.
+Real-video inference tested at commit `d56c223`; final code cleanup verified at
+commit `b4f311e`.
 
 - All package modules import without loading the original package, training
   datasets, Aria, or body-estimation code.
@@ -25,3 +26,10 @@ and exported camera-space results through PnP. This short smoke check does not
 establish full-length-video accuracy or GPU numerical/performance parity.
 
 No model weights or licensed third-party assets are bundled in this repository.
+
+Final CPU job 421048 completed with exit code 0 after removing obsolete
+conditioning utilities. Package/geometry/window checks and all four exact
+reference-sampler comparisons passed again. The saved real-video artifact
+contains four valid observations with finite pose, shape, orientation,
+translation and 2D joints, and nonzero translations. The real-video pipeline
+was not rerun at this final cleanup commit.

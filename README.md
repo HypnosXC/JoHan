@@ -8,7 +8,7 @@ Inference code for the current ViT-H/512 version is available here. Model weight
 
 ## Inference preview
 
-This branch contains the hand-only inference package. It does not include training,
+This repository contains the hand-only inference package. It does not include training,
 datasets, body estimation, Aria processing, benchmark runners, or cluster automation.
 Model weights are not included in Git. This release accepts only the current ViT-H/512 joint 2D–3D architecture (2ff60ef, v3/checkpoints_145000).
 
