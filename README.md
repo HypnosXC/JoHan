@@ -4,7 +4,7 @@
 
 [Paper (arXiv)](https://arxiv.org/abs/2610.10512) · [Project page](https://hypnosxc.github.io/JoHan-project/)
 
-Inference code for the current ViT-H/512 version is being prepared here. Model weights are not bundled.
+Inference code for the current ViT-H/512 version is available here. Model weights are not bundled.
 
 ## Inference preview
 
@@ -76,7 +76,7 @@ SLAM, body estimation, or Metric3D depth estimation. PnP can be ambiguous under
 heavy occlusion and does not guarantee metric depth accuracy.
 
 The current video reader keeps decoded frames in memory; trim long videos before
-running this preview. No end-to-end validation is claimed until recorded below.
+running this preview. See [VALIDATION.md](VALIDATION.md) for the tested checkpoint and scope.
 
 ## Attribution
 

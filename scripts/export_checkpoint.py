@@ -20,6 +20,7 @@ def main():
     for name in names:
         if not (a.source/name).is_file(): raise FileNotFoundError(a.source/name)
     model=read_config(a.source.parent/'model_config.yaml')
+    model.pop('include_canonicalized_cpf_rotation_in_cond',None)
     run=read_config(a.source.parent/'run_config.yaml')
     if run.get('dino_model_name')!='dinov3_vith16plus' or model.get('image_size')!=512:
         raise ValueError('Only current ViT-H/512 checkpoints are supported')

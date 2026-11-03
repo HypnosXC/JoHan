@@ -64,12 +64,14 @@ def main():
     from .backbone import DinoFeatureExtractor
     from . import sampling
     from .geometry import denormalize_2d_keypoints_minmax, solve_global_pose_pnp
+    print("Loading ViT-H hand checkpoint...", flush=True)
     net,config=load_model(args.checkpoint,args.device,args.weights)
     if config.get('use_feature','online_dino')!='online_dino':
         raise ValueError('Only DINO checkpoints are supported in this release')
     size=int(config.get('image_size',256)); length=int(config.get('subseq_len',128))
     if size%16 or length<1:
         raise ValueError('Invalid checkpoint image size or sequence length')
+    print("Loading DINOv3 ViT-H backbone...", flush=True)
     dino=DinoFeatureExtractor(args.dino_repo,'dinov3_vith16plus',args.dino_weights,args.device)
     suffix='_ema' if args.weights=='ema' else ''
     backbone=args.checkpoint/f'dino_finetuned{suffix}.pt'
@@ -87,6 +89,7 @@ def main():
     finally: capture.release()
     if not rgb: raise ValueError(f'No video frames decoded: {args.video}')
     if any(im.shape!=rgb[0].shape for im in rgb): raise ValueError('Video resolution changed')
+    print(f"Decoded {len(rgb)} frames; detecting hands...", flush=True)
     detector=YOLO(str(args.detector))
     boxes=np.full((len(rgb),2,4),np.nan,np.float32)
     for start in range(0,len(rgb),32):
@@ -108,6 +111,7 @@ def main():
              {'mano_pose':(45,), 'mano_betas':(10,), 'global_orient':(3,), 'translation':(3,), 'joints_2d':(21,2)}.items()}
     for side in (0,1):
         for s,e,keep in windows(valid[:,side],length):
+            print(f"Recovering {'right' if side else 'left'} hand, frames {s}:{e}...", flush=True)
             batch=make_batch(rgb[s:e],boxes[s:e,side],side,args.intrinsics,size,args.device)
             with torch.inference_mode():
                 traj,uv,conf=sampling.sample_hand(net,batch,torch.device(args.device),num_flow_steps=args.steps)

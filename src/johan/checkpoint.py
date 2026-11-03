@@ -24,6 +24,8 @@ def load_model(checkpoint, device, weights='raw'):
     checkpoint = Path(checkpoint)
     model_path = checkpoint.parent / 'model_config.yaml'
     values = read_config(model_path)
+    # This legacy body-conditioning flag never participates in the hand-side-only model.
+    values.pop('include_canonicalized_cpf_rotation_in_cond', None)
     cls = HandDenoiserPerJointConfig
     known = {f.name for f in dataclasses.fields(cls)}
     unknown = set(values)-known

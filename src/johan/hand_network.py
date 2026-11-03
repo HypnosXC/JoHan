@@ -11,7 +11,6 @@ from jaxtyping import Bool, Float
 from rotary_embedding_torch import RotaryEmbedding
 from torch import Tensor, nn
 from .mano_smplx_layer import ManoLayer
-from .hand2d_net import Pose2DTransformerDecoder, GlobalPoseHead, TemporalCrossAttnBlock, TemporalSelfAttnBlock
 from .tensor_dataclass import TensorDataclass
 from .transforms import SE3, SO3
 
@@ -265,7 +264,6 @@ class HandDenoiserConfig:
         "kv_from_cond_q_from_x"
     )
 
-    include_canonicalized_cpf_rotation_in_cond: bool = True
 
     cond_param: Literal[
         "ours", "all", "wrist_motion","differential","canonicalized", "absolute", "absrel", "absrel_global_deltas"
@@ -310,36 +308,9 @@ class HandDenoiserConfig:
         conds: HandDenoiseTraj,
     ) -> Float[Tensor, "batch time d_cond"]:
         """Build the per-frame conditioning vector before Fourier encoding."""
-        batch, time, _ = conds.global_translation.shape
-
-        if self.cond_param == "all":
-            cond = conds.pack()
-        elif self.cond_param == "only_side":
-            cond = conds.mano_side
-        elif self.cond_param == "ours":
-            diff_cond = torch.zeros_like(rel_palm_pose)
-            diff_cond[:, 1:, :] = rel_palm_pose[:, 1:, :] - rel_palm_pose[:, :-1, :]
-            cond = torch.cat((rel_palm_pose, diff_cond), dim=-1)
-        elif self.cond_param in ("wrist_motion", "differential"):
-            # Both branches build the same per-frame [cur_motion(0) | diff_motion]
-            # absolute+relative SE(3) representation. The original "differential"
-            # branch used to zero out cur_motion via inv@cur, but that just yields
-            # identity, so we use the same code for both names.
-            trans = conds.global_translation
-            prior_orien = SO3.exp(conds.global_orientation[:, :-1, :].float())
-            cur_orien = SO3.exp(conds.global_orientation[:, 1:, :].float())
-            prior_motion = SE3.from_rotation_and_translation(prior_orien, trans[:, :-1, :])
-            cur_motion = SE3.from_rotation_and_translation(cur_orien, trans[:, 1:, :])
-            diff_motion = prior_motion.inverse() @ cur_motion
-            if self.cond_param == "differential":
-                cur_motion = cur_motion.inverse() @ cur_motion  # identity
-            cur_mat = cur_motion.as_matrix()[..., :3, :].reshape((batch, time - 1, 12))
-            diff_mat = diff_motion.as_matrix()[..., :3, :].reshape((batch, time - 1, 12))
-            cond = torch.cat((cur_mat[:, :1, :], diff_mat), dim=1)
-            cond = torch.cat((cond, conds.mano_side), dim=-1)
-        else:
-            assert_never(self.cond_param)
-        return fourier_encode(cond, freqs=self.fourier_enc_freqs)
+        if self.cond_param != "only_side":
+            raise ValueError("Current ViT-H inference conditions only on hand side")
+        return fourier_encode(conds.mano_side, freqs=self.fourier_enc_freqs)
 
 
 def make_positional_encoding(
@@ -373,166 +344,3 @@ def fourier_encode(
     )
 
 
-@dataclass(frozen=True)
-class TransformerBlockConfig:
-    d_latent: int
-    d_noise_emb: int
-    d_feedforward: int
-    n_heads: int
-    dropout_p: float
-    activation: Literal["gelu", "relu"]
-    include_xattn: bool
-    use_rope_embedding: bool
-    use_film_noise_conditioning: bool
-    xattn_mode: Literal["kv_from_cond_q_from_x", "kv_from_x_q_from_cond"]
-
-
-class TransformerBlock(nn.Module):
-    """An even-tempered Transformer block."""
-
-    def __init__(self, config: TransformerBlockConfig) -> None:
-        super().__init__()
-        self.sattn_qkv_proj = nn.Linear(
-            config.d_latent, config.d_latent * 3, bias=False
-        )
-        self.sattn_out_proj = nn.Linear(config.d_latent, config.d_latent, bias=False)
-
-        self.layernorm1 = nn.LayerNorm(config.d_latent)
-        self.layernorm2 = nn.LayerNorm(config.d_latent)
-
-        assert config.d_latent % config.n_heads == 0
-        self.rotary_emb = (
-            RotaryEmbedding(config.d_latent // config.n_heads)
-            if config.use_rope_embedding
-            else None
-        )
-
-        if config.include_xattn:
-            self.xattn_kv_proj = nn.Linear(
-                config.d_latent, config.d_latent * 2, bias=False
-            )
-            self.xattn_q_proj = nn.Linear(config.d_latent, config.d_latent, bias=False)
-            self.xattn_layernorm = nn.LayerNorm(config.d_latent)
-            self.xattn_out_proj = nn.Linear(
-                config.d_latent, config.d_latent, bias=False
-            )
-
-        self.norm_no_learnable = nn.LayerNorm(
-            config.d_feedforward, elementwise_affine=False, bias=False
-        )
-        self.activation = {"gelu": nn.GELU, "relu": nn.ReLU}[config.activation]()
-        self.dropout = nn.Dropout(config.dropout_p)
-
-        self.mlp0 = nn.Linear(config.d_latent, config.d_feedforward)
-        self.mlp_film_cond_proj = (
-            zero_module(
-                nn.Linear(config.d_noise_emb, config.d_feedforward * 2, bias=False)
-            )
-            if config.use_film_noise_conditioning
-            else None
-        )
-        self.mlp1 = nn.Linear(config.d_feedforward, config.d_latent)
-        self.config = config
-
-    def forward(
-        self,
-        x: Float[Tensor, "batch tokens d_latent"],
-        attn_mask: Bool[Tensor, "batch 1 tokens tokens"] | None,
-        noise_emb: Float[Tensor, "batch d_noise_emb"],
-        cond: Float[Tensor, "batch tokens d_latent"] | None = None,
-    ) -> Float[Tensor, "batch tokens d_latent"]:
-        config = self.config
-        (batch, time, d_latent) = x.shape
-
-        # Self-attention.
-        # We put layer normalization after the residual connection.
-        x = self.layernorm1(x + self._sattn(x, attn_mask))
-
-        # Include conditioning.
-        if config.include_xattn:
-            assert cond is not None
-            x = self.xattn_layernorm(x + self._xattn(x, attn_mask, cond=cond))
-
-        mlp_out = x
-        mlp_out = self.mlp0(mlp_out)
-        mlp_out = self.activation(mlp_out)
-
-        # FiLM-style conditioning.
-        if self.mlp_film_cond_proj is not None:
-            scale, shift = torch.chunk(
-                self.mlp_film_cond_proj(noise_emb), chunks=2, dim=-1
-            )
-            assert scale.shape == shift.shape == (batch, config.d_feedforward)
-            mlp_out = (
-                self.norm_no_learnable(mlp_out) * (1.0 + scale[:, None, :])
-                + shift[:, None, :]
-            )
-
-        mlp_out = self.dropout(mlp_out)
-        mlp_out = self.mlp1(mlp_out)
-
-        x = self.layernorm2(x + mlp_out)
-        assert x.shape == (batch, time, d_latent)
-        return x
-
-    def _sattn(self, x: Tensor, attn_mask: Tensor | None) -> Tensor:
-        """Multi-head self-attention."""
-        config = self.config
-        q, k, v = rearrange(
-            self.sattn_qkv_proj(x),
-            "b t (qkv nh dh) -> qkv b nh t dh",
-            qkv=3,
-            nh=config.n_heads,
-        )
-        if self.rotary_emb is not None:
-            q = self.rotary_emb.rotate_queries_or_keys(q, seq_dim=-2)
-            k = self.rotary_emb.rotate_queries_or_keys(k, seq_dim=-2)
-        x = torch.nn.functional.scaled_dot_product_attention(
-            q, k, v, dropout_p=config.dropout_p if self.training else 0.0, attn_mask=attn_mask
-        )
-        x = rearrange(x, "b nh t dh -> b t (nh dh)", nh=config.n_heads)
-        x = self.sattn_out_proj(x)
-        return x
-    
-
-    def _xattn(self, x: Tensor, attn_mask: Tensor | None, cond: Tensor) -> Tensor:
-        """Multi-head cross-attention."""
-        config = self.config
-        k, v = rearrange(
-            self.xattn_kv_proj(
-                {
-                    "kv_from_cond_q_from_x": cond,
-                    "kv_from_x_q_from_cond": x,
-                }[self.config.xattn_mode]
-            ),
-            "b t (qk nh dh) -> qk b nh t dh",
-            qk=2,
-            nh=config.n_heads,
-        )
-        q = rearrange(
-            self.xattn_q_proj(
-                {
-                    "kv_from_cond_q_from_x": x,
-                    "kv_from_x_q_from_cond": cond,
-                }[self.config.xattn_mode]
-            ),
-            "b t (nh dh) -> b nh t dh",
-            nh=config.n_heads,
-        )
-        if self.rotary_emb is not None:
-            q = self.rotary_emb.rotate_queries_or_keys(q, seq_dim=-2)
-            k = self.rotary_emb.rotate_queries_or_keys(k, seq_dim=-2)
-        x = torch.nn.functional.scaled_dot_product_attention(
-            q, k, v, dropout_p=config.dropout_p if self.training else 0.0, attn_mask=attn_mask
-        )
-        x = rearrange(x, "b nh t dh -> b t (nh dh)")
-        x = self.xattn_out_proj(x)
-
-        return x
-
-
-def zero_module(module):
-    """Zero out the parameters of a module and return it."""
-    for p in module.parameters():
-        p.detach().zero_()
-    return module
