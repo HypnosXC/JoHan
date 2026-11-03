@@ -139,14 +139,6 @@ Each run writes an NPZ archive and a JSON metadata file. Hand arrays use the ord
 
 Missing detections have `valid=False` and NaN predictions. The JSON file records the checkpoint, weight mode, coordinate convention, frame count and sampling steps. The CLI exports numerical predictions; it does not render overlay or trajectory videos.
 
-### Practical notes
-
-- **One person per video.** The detector chooses the highest-confidence hand of each side per frame; multi-person identity tracking is not implemented.
-- **Detection gaps.** Inference uses up to 128-frame windows within contiguous detections and does not fill gaps between runs.
-- **Long videos.** Decoded frames are kept in host memory. Start with a short clip or limit the number of frames.
-- **Pose ambiguity.** PnP uses predicted joints and supplied intrinsics; severe occlusion or inaccurate calibration can affect global pose and depth.
-- **Model compatibility.** This release supports the current DINOv3 ViT-H/16+, 512-pixel joint 2D–3D architecture. Other backbones and ablation checkpoints are rejected.
-
 ## Project Layout
 
 ```text
