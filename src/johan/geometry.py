@@ -230,6 +230,8 @@ def solve_global_pose_pnp(
         _bad = np.zeros(n, dtype=bool)
         _bad[np.asarray(_failed, dtype=int)] = True
         _gidx = np.nonzero(~_bad)[0]
+        if not _gidx.size:
+            raise RuntimeError("PnP failed for every frame in this detection run")
         if _gidx.size:
             _t = np.arange(n)
             for _c in range(3):

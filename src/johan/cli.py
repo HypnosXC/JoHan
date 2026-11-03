@@ -70,7 +70,7 @@ def main():
     size=int(config.get('image_size',256)); length=int(config.get('subseq_len',128))
     if size%16 or length<1:
         raise ValueError('Invalid checkpoint image size or sequence length')
-    dino=DinoFeatureExtractor(args.dino_repo,config.get('dino_model_name','dinov3_vitb16'),args.dino_weights,args.device)
+    dino=DinoFeatureExtractor(args.dino_repo,'dinov3_vith16plus',args.dino_weights,args.device)
     suffix='_ema' if args.weights=='ema' else ''
     backbone=args.checkpoint/f'dino_finetuned{suffix}.pt'
     if not backbone.exists():
@@ -110,10 +110,7 @@ def main():
         for s,e,keep in windows(valid[:,side],length):
             batch=make_batch(rgb[s:e],boxes[s:e,side],side,args.intrinsics,size,args.device)
             with torch.inference_mode():
-                traj,uv,conf=sampling.sample_hand(net,batch,torch.device(args.device),
-                    training_mode=config.get('training_mode','flow_matching'),num_flow_steps=args.steps,
-                    use_optimal_2d=getattr(net.config,'use_optimal_2d',False),infer_window=length,
-                    **{k:config[k] for k in ('crop_before_dino','bbox_crop_margin','bbox_crop_square','crop_global_feat','bbox_mask_square','bbox_mask_scale') if k in config})
+                traj,uv,conf=sampling.sample_hand(net,batch,torch.device(args.device),num_flow_steps=args.steps)
             uv=((uv+1)*(size*.5) if getattr(net.config,'pose2d_absolute',False) else
                 denormalize_2d_keypoints_minmax(uv,batch.joint_2d_norm_params_per_frame))[0].cpu()
             uv*=torch.tensor([rgb[0].shape[1]/size,rgb[0].shape[0]/size])

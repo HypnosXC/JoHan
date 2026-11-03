@@ -4,7 +4,6 @@ import dataclasses
 import json
 import yaml
 from safetensors.torch import load_file
-from .hand_network import HandDenoiser, HandDenoiserConfig
 from .hand_network_perjoint import HandDenoiserPerJoint, HandDenoiserPerJointConfig
 
 class ConfigLoader(yaml.SafeLoader):
@@ -25,8 +24,7 @@ def load_model(checkpoint, device, weights='raw'):
     checkpoint = Path(checkpoint)
     model_path = checkpoint.parent / 'model_config.yaml'
     values = read_config(model_path)
-    perjoint = 'HandDenoiserPerJointConfig' in model_path.read_text() or 'num_rounds' in values
-    cls = HandDenoiserPerJointConfig if perjoint else HandDenoiserConfig
+    cls = HandDenoiserPerJointConfig
     known = {f.name for f in dataclasses.fields(cls)}
     unknown = set(values)-known
     if unknown:
@@ -37,7 +35,22 @@ def load_model(checkpoint, device, weights='raw'):
     cfg = cls(**values)
     if not cfg.predict_2Dpose or getattr(cfg,'pure_3d',False) or getattr(cfg,'pose2d_state_only',False) or getattr(cfg,'predict_global_pose',False):
         raise ValueError('This release supports joint 2D–3D hand checkpoints with PnP global pose.')
-    net = (HandDenoiserPerJoint if perjoint else HandDenoiser)(cfg)
+    expected = dict(image_size=512, pose2d_patch_feat_channels=1280, d_latent=640,
+        num_heads=10, trunk_rounds=6, time_embed='sinusoidal', adaln_zero=True,
+        flow_time_convention='flow', using_mat=True, use_optimal_2d=False,
+        pose2d_conf_in_state=True, pose2d_regression=False, use_perjoint_pose2d=True,
+        cond_param='only_side', use_mmdit=False, crop_feat_for_3d=False)
+    for key, value in expected.items():
+        if getattr(cfg,key,None)!=value:
+            raise ValueError(f'Only current ViT-H/512 supported: {key} must be {value!r}')
+    run = read_config(checkpoint.parent/'run_config.yaml')
+    for key, value in dict(dino_model_name='dinov3_vith16plus',image_size=512,
+        subseq_len=128,use_feature='online_dino',crop_before_dino=False,
+        crop_global_feat=False,gt_bbox_square=True,gt_bbox_scale=1.0,
+        bbox_mask_square=False,bbox_mask_scale=1.0).items():
+        if run.get(key)!=value:
+            raise ValueError(f'Unsupported ViT-H deployment setting {key}: {run.get(key)!r}')
+    net = HandDenoiserPerJoint(cfg)
     filename = 'model_ema.safetensors' if weights=='ema' else 'model.safetensors'
     net.load_state_dict(load_file(str(checkpoint/filename)), strict=True)
-    return net.to(device).eval(), read_config(checkpoint.parent/'run_config.yaml')
+    return net.to(device).eval(), run

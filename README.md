@@ -4,13 +4,21 @@
 
 [Paper (arXiv)](https://arxiv.org/abs/2610.10512) · [Project page](https://hypnosxc.github.io/JoHan-project/)
 
-Code and model weights will be released here.
+Inference code for the current ViT-H/512 version is being prepared here. Model weights are not bundled.
 
 ## Inference preview
 
 This branch contains the hand-only inference package. It does not include training,
 datasets, body estimation, Aria processing, benchmark runners, or cluster automation.
-Model weights are not included in Git. Use a compatible JoHan joint 2D–3D checkpoint.
+Model weights are not included in Git. This release accepts only the current ViT-H/512 joint 2D–3D architecture (2ff60ef, v3/checkpoints_145000).
+
+### Supported version
+
+DINOv3 ViT-H/16+, 512-pixel RGB, 128-frame windows, 640-dimensional
+per-joint trunk with six rounds and ten heads, AdaLN-Zero and sinusoidal time
+embedding. Inference uses the original 10-step sine flow schedule, square input
+boxes at scale 1.0, full-image features and predicted 2D conditioning. Other
+backbones and ablation configurations are rejected.
 
 ### Installation
 
@@ -37,7 +45,7 @@ Optimizer state, training data and EMA optimizer bookkeeping are unnecessary.
 
 ```bash
 johan --video input.mp4 \
-  --checkpoint checkpoints/release/checkpoints_130000 \
+  --checkpoint checkpoints/release/checkpoints_145000 \
   --dino-repo assets/dinov3 --dino-weights assets/dino_pretrained.pth \
   --mano-root assets/mano --detector assets/detector.pt \
   --intrinsics 1000 1000 640 360 --output outputs/predictions.npz
