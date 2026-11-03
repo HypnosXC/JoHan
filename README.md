@@ -1,99 +1,199 @@
+<div align="center">
+
 # JoHan
+### Video-Conditioned Generative Joint 2D–3D Hand Motion Recovery
 
-**Video-Conditioned Generative Joint 2D–3D Hand Motion Recovery**
+Chen Xu · Yunqi Li · Binbin Huang · Brent Yi · Shenghua Gao · Yi Ma
 
-[Paper (arXiv)](https://arxiv.org/abs/2610.10512) · [Project page](https://hypnosxc.github.io/JoHan-project/)
+**The University of Hong Kong · UC Berkeley**
 
-Inference code for the current ViT-H/512 version is available here. Model weights are not bundled.
+[**Paper**](https://arxiv.org/abs/2610.10512) · [**Project & Results**](https://hypnosxc.github.io/JoHan-project/) · [**Pretrained Weights**](https://huggingface.co/HypnosXC/JoHan_pretrained)
 
-## Inference preview
+</div>
 
-This repository contains the hand-only inference package. It does not include training,
-datasets, body estimation, Aria processing, benchmark runners, or cluster automation.
-Model weights are not included in Git. This release accepts only the current ViT-H/512 joint 2D–3D architecture (2ff60ef, v3/checkpoints_145000).
+JoHan recovers hand motion from monocular RGB video by jointly generating 2D joint trajectories and local 3D hand pose. The generated 2D–3D correspondences then recover the hand's orientation and translation relative to the camera.
 
-### Supported version
+This repository provides the **ViT-H/512 inference release**. A single `johan` command runs hand detection, video-conditioned generation and geometric pose recovery for left and right hands, and saves the results for downstream use.
 
-DINOv3 ViT-H/16+, 512-pixel RGB, 128-frame windows, 640-dimensional
-per-joint trunk with six rounds and ten heads, AdaLN-Zero and sinusoidal time
-embedding. Inference uses the original 10-step sine flow schedule, square input
-boxes at scale 1.0, full-image features and predicted 2D conditioning. Other
-backbones and ablation configurations are rejected.
+## Release
 
-### Installation
+- [x] Video-to-hand inference with the ViT-H/512 model.
+- [x] Paired JoHan and fine-tuned DINOv3 RAW weights at step 145000.
+- [x] Camera-space MANO parameters and image-space 2D trajectories.
 
-Use Python 3.12+ and a CUDA-capable PyTorch installation:
+The current release focuses on inference. Training, dataset preparation and benchmark runners are not included. Qualitative results and interactive examples are available on the [project page](https://hypnosxc.github.io/JoHan-project/).
+
+## Installation
+
+### 1. Clone and create an environment
+
+```bash
+git clone https://github.com/HypnosXC/JoHan.git
+cd JoHan
+conda create -n johan python=3.12 -y
+conda activate johan
+```
+
+### 2. Install dependencies
+
+Install [PyTorch](https://pytorch.org/get-started/locally/) with CUDA support appropriate for your system, then install JoHan and the Hugging Face CLI:
 
 ```bash
 pip install -e .
+pip install huggingface_hub
 ```
 
-Obtain these assets separately under their respective licenses:
+JoHan requires Python 3.12 or newer and PyTorch 2.7 or newer (below 3.0). The default device is CUDA; `--device cpu` is available for a slow smoke run. See [VALIDATION.md](VALIDATION.md) for the checks performed on this release.
 
-- A local DINOv3 checkout and the matching pretrained backbone weights.
-- MANO_LEFT.pkl and MANO_RIGHT.pkl from MANO, in one directory.
-- The WiLoR YOLO hand detector checkpoint (classes 0=left and 1=right).
-- JoHan model_config.yaml and run_config.yaml in the checkpoint's parent directory.
-- model.safetensors and dino_finetuned.pt in the checkpoint directory. EMA mode
-  requires both model_ema.safetensors and dino_finetuned_ema.pt; it never mixes modes.
-  train_meta.json is retained when present to resolve checkpoint-specific coord_range.
+## Pretrained Models and Assets
 
-Legacy dataclass YAML tags are read as mappings without importing the old package.
-Optimizer state, training data and EMA optimizer bookkeeping are unnecessary.
-
-### Video inference
+### 1. Download JoHan and its fine-tuned backbone
 
 ```bash
-johan --video input.mp4 \
-  --checkpoint checkpoints/release/checkpoints_145000 \
-  --dino-repo assets/dinov3 --dino-weights assets/dino_pretrained.pth \
-  --mano-root assets/mano --detector assets/detector.pt \
-  --intrinsics 1000 1000 640 360 --output outputs/predictions.npz
+hf download HypnosXC/JoHan_pretrained --local-dir assets/JoHan_pretrained
+(cd assets/JoHan_pretrained && shasum -a 256 -c SHA256SUMS)
 ```
 
-Supply calibrated fx, fy, cx, cy in original-video pixels. The example intrinsics
-are placeholders. Image size, backbone architecture and box conditioning come
-from the checkpoint configuration. `--weights ema` selects paired EMA weights.
-`--max-frames 128` limits a smoke run; `--steps 10` controls flow sampling.
+The download includes **both** `model.safetensors` and its matching `dino_finetuned.pt`, together with inference configurations. Use these files as a pair. This release provides RAW weights; use `--weights raw` (the default).
 
-The detector selects the most confident hand of each side per frame. This initial
-release targets a single wearer/person, not multi-person identity tracking.
-Inference windows stay within contiguous detection runs and never bridge gaps.
+### 2. Prepare external assets
 
-The NPZ contains frame × hand arrays (`hand=0` left, `hand=1` right):
+| Asset | Source | Expected location |
+| --- | --- | --- |
+| DINOv3 implementation | [Meta DINOv3](https://github.com/facebookresearch/dinov3) | `assets/dinov3/` |
+| Original DINOv3 ViT-H/16+ LVD-1689M weights | [DINOv3 model access](https://github.com/facebookresearch/dinov3#pretrained-models) | `assets/dino_pretrained.pth` |
+| WiLoR hand detector (`detector.pt`) | [WiLoR](https://github.com/rolpotamias/WiLoR#installation) | `assets/detector.pt` |
+| Left and right MANO models | [MANO](https://mano.is.tue.mpg.de/) (registration required) | `assets/mano/MANO_LEFT.pkl`, `MANO_RIGHT.pkl` |
 
-- `mano_pose`: 45 local axis-angle parameters, radians.
-- `mano_betas`: 10 shape coefficients.
-- `global_orient`: camera-space root axis-angle, radians.
-- `translation`: MANO camera-space translation, metres, recovered with PnP.
-- `joints_2d`: 21 joints in original-video pixels.
-- `bboxes`, `valid`, `intrinsics`, `fps`.
-
-Missing detections have `valid=False` and NaN outputs. A JSON sidecar records
-checkpoint, weight mode and coordinate convention. Camera-space trajectories
-include camera motion; this preview does not claim world-space recovery or run
-SLAM, body estimation, or Metric3D depth estimation. PnP can be ambiguous under
-heavy occlusion and does not guarantee metric depth accuracy.
-
-The current video reader keeps decoded frames in memory; trim long videos before
-running this preview. See [VALIDATION.md](VALIDATION.md) for the tested checkpoint and scope.
-
-## Attribution
-
-Reusable tensor/transform/transformer utilities derive from the MIT-licensed
-upstream project by Brent Yi. Its copyright and license are preserved in LICENSE.
-DINOv3, MANO and the WiLoR detector are separate assets governed by their own
-licenses; this repository does not redistribute them.
-
-### Prepare an inference-only checkpoint bundle
-
-After installation, maintainers can strip training files and Python YAML tags:
+Clone the backbone implementation:
 
 ```bash
-python scripts/export_checkpoint.py /path/to/checkpoints_145000 /new/release/vith512 --weights raw
+git clone https://github.com/facebookresearch/dinov3.git assets/dinov3
 ```
 
-Pass `/new/release/vith512/checkpoint` to `--checkpoint`. The export contains only
-paired model/backbone weights, plain model/input configuration, and the
-checkpoint's coordinate scale. It excludes optimizer, scheduler, RNG, dataset
-paths and training logs. The destination must be new.
+Obtain the remaining assets from the linked projects under their respective licenses. The detector must use WiLoR's class convention: `0=left`, `1=right`.
+
+**Why two DINO files?** The current loader constructs the backbone using the original pretrained initialization supplied through `--dino-weights`, then loads the complete fine-tuned state from the JoHan checkpoint directory. The released `dino_finetuned.pt` is a state dictionary for JoHan's feature-extractor wrapper; do not pass it to `--dino-weights`.
+
+Expected layout:
+
+```text
+assets/
+├── JoHan_pretrained/
+│   ├── model_config.yaml
+│   ├── run_config.yaml
+│   ├── SHA256SUMS
+│   └── checkpoint/
+│       ├── model.safetensors
+│       ├── dino_finetuned.pt
+│       └── train_meta.json
+├── dinov3/
+├── dino_pretrained.pth
+├── detector.pt
+└── mano/
+    ├── MANO_LEFT.pkl
+    └── MANO_RIGHT.pkl
+```
+
+## Run on Your Video
+
+Provide an RGB video and its calibrated camera intrinsics:
+
+```bash
+johan --video /path/to/video.mp4 \
+  --checkpoint assets/JoHan_pretrained/checkpoint \
+  --dino-repo assets/dinov3 \
+  --dino-weights assets/dino_pretrained.pth \
+  --mano-root assets/mano \
+  --detector assets/detector.pt \
+  --intrinsics 1000 1000 640 360 \
+  --output outputs/predictions.npz
+```
+
+Replace the example intrinsics with **`fx fy cx cy` in the original video's pixel coordinates**, separated by spaces. These values are required; the CLI does not estimate camera calibration.
+
+For a short first run, append `--max-frames 128`. The same command accepts fixed-camera and moving-camera videos; in both cases, the output is in the **camera coordinate frame**. Camera motion is therefore present in the recovered trajectories. This release does not run SLAM or world-space alignment.
+
+### Options
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--device` | `cuda` | PyTorch device, such as `cuda:0` or `cpu` |
+| `--steps` | `10` | Number of flow-sampling steps |
+| `--max-frames` | `0` | Maximum frames to process; `0` reads the whole video |
+| `--confidence` | `0.3` | Hand detection confidence threshold |
+| `--weights` | `raw` | Weight mode; `ema` requires a separate matching EMA pair |
+| `--output` | `outputs/predictions.npz` | Prediction file; metadata is saved alongside it as JSON |
+
+Run `johan --help` for the complete argument list.
+
+## Outputs
+
+Each run writes an NPZ archive and a JSON metadata file. Hand arrays use the order **`[left, right]`**, with `T` denoting the number of video frames.
+
+| Key | Shape | Meaning |
+| --- | --- | --- |
+| `mano_pose` | `(T, 2, 45)` | Local MANO axis-angle pose, radians |
+| `mano_betas` | `(T, 2, 10)` | MANO shape coefficients |
+| `global_orient` | `(T, 2, 3)` | Camera-space root axis-angle, radians |
+| `translation` | `(T, 2, 3)` | Camera-space MANO translation, metres, recovered by PnP |
+| `joints_2d` | `(T, 2, 21, 2)` | Predicted joints in original-video pixels |
+| `bboxes` | `(T, 2, 4)` | Inference boxes after square/scale adjustment, `x1, y1, x2, y2` pixels |
+| `valid` | `(T, 2)` | Whether a hand observation is present |
+| `intrinsics` | `(4,)` | Input `fx, fy, cx, cy` |
+| `fps` | scalar | Video frame rate |
+
+Missing detections have `valid=False` and NaN predictions. The JSON file records the checkpoint, weight mode, coordinate convention, frame count and sampling steps. The CLI exports numerical predictions; it does not render overlay or trajectory videos.
+
+### Practical notes
+
+- **One person per video.** The detector chooses the highest-confidence hand of each side per frame; multi-person identity tracking is not implemented.
+- **Detection gaps.** Inference uses up to 128-frame windows within contiguous detections and does not fill gaps between runs.
+- **Long videos.** Decoded frames are kept in host memory. Start with a short clip or limit the number of frames.
+- **Pose ambiguity.** PnP uses predicted joints and supplied intrinsics; severe occlusion or inaccurate calibration can affect global pose and depth.
+- **Model compatibility.** This release supports the current DINOv3 ViT-H/16+, 512-pixel joint 2D–3D architecture. Other backbones and ablation checkpoints are rejected.
+
+## Project Layout
+
+```text
+JoHan/
+├── src/johan/
+│   ├── cli.py                 # Video input, detection and output export
+│   ├── backbone.py            # DINOv3 feature extraction
+│   ├── checkpoint.py          # Configuration and strict weight loading
+│   ├── sampling.py            # Flow inference
+│   ├── hand_network_perjoint.py
+│   ├── hand2d_perjoint_net.py  # Joint 2D–3D architecture
+│   ├── geometry.py            # 2D denormalization and camera-space PnP
+│   └── mano_smplx_layer.py     # MANO hand model
+├── scripts/export_checkpoint.py
+├── tests/smoke.py
+├── VALIDATION.md
+└── pyproject.toml
+```
+
+Maintainers can export a new inference-only checkpoint bundle with `scripts/export_checkpoint.py`; optimizer state and training data are not required for inference.
+
+## Acknowledgements
+
+We thank the authors of [DINOv3](https://github.com/facebookresearch/dinov3), [WiLoR](https://github.com/rolpotamias/WiLoR) and [MANO](https://mano.is.tue.mpg.de/) for their models and tools. Reusable tensor, transformation and transformer utilities build on Brent Yi's MIT-licensed work; the original copyright notice is retained in [LICENSE](LICENSE).
+
+## Citation
+
+If JoHan is useful for your research, please cite:
+
+```bibtex
+@misc{xu2026johan,
+  title={Video-Conditioned Generative Joint 2D-3D Hand Motion Recovery},
+  author={Xu, Chen and Li, Yunqi and Huang, Binbin and Yi, Brent and Gao, Shenghua and Ma, Yi},
+  year={2026},
+  eprint={2610.10512},
+  archivePrefix={arXiv},
+  primaryClass={cs.CV},
+  url={https://arxiv.org/abs/2610.10512}
+}
+```
+
+## License
+
+JoHan source code is released under the [MIT License](LICENSE). The weight repository documents the licenses for JoHan and its fine-tuned DINOv3 backbone separately. DINOv3, the WiLoR detector and MANO assets remain subject to their respective licenses and access requirements.
