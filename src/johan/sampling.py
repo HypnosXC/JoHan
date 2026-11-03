@@ -14,7 +14,7 @@ def sample_hand(net, batch, device, num_flow_steps=10):
     rgb=batch.rgb_frames.permute(0,1,4,2,3).to(torch.bfloat16)
     mean=torch.tensor([.485,.456,.406],device=device,dtype=torch.bfloat16).view(1,3,1,1)
     std=torch.tensor([.229,.224,.225],device=device,dtype=torch.bfloat16).view(1,3,1,1)
-    frames=(rgb/255.-mean)/std
+    frames=(rgb.mul_(1.0/255.0)-mean)/std
     feat=_DINO_EXTRACTOR(frames.reshape(-1,*frames.shape[2:]))
     feat=feat.reshape(b,t,*feat.shape[1:]).float()
     mask=generate_bbox_mask_per_frame_gpu(batch.joint_2d_norm_params_per_frame,batch.img_shape)
