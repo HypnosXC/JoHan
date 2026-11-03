@@ -9,7 +9,6 @@ def parser():
     p.add_argument('--video',type=Path,required=True)
     p.add_argument('--checkpoint',type=Path,required=True)
     p.add_argument('--dino-repo',type=Path,required=True)
-    p.add_argument('--dino-weights',type=Path,required=True)
     p.add_argument('--mano-root',type=Path,required=True)
     p.add_argument('--detector',type=Path,required=True,help='WiLoR YOLO hand detector checkpoint')
     p.add_argument('--intrinsics',type=float,nargs=4,required=True,metavar=('FX','FY','CX','CY'))
@@ -72,12 +71,11 @@ def main():
     if size%16 or length<1:
         raise ValueError('Invalid checkpoint image size or sequence length')
     print("Loading DINOv3 ViT-H backbone...", flush=True)
-    dino=DinoFeatureExtractor(args.dino_repo,'dinov3_vith16plus',args.dino_weights,args.device)
     suffix='_ema' if args.weights=='ema' else ''
     backbone=args.checkpoint/f'dino_finetuned{suffix}.pt'
     if not backbone.exists():
         raise FileNotFoundError(f'Matching exported DINO weights required: {backbone}')
-    dino.load_state_dict(torch.load(backbone,map_location='cpu',weights_only=True),strict=True)
+    dino=DinoFeatureExtractor(args.dino_repo,'dinov3_vith16plus',backbone,args.device)
     sampling._DINO_EXTRACTOR=dino
     capture=cv2.VideoCapture(str(args.video)); fps=capture.get(cv2.CAP_PROP_FPS)
     rgb=[]

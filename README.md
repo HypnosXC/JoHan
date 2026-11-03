@@ -51,7 +51,6 @@ JoHan requires Python 3.12 or newer and PyTorch 2.7 or newer (below 3.0). The de
 
 ```bash
 hf download HypnosXC/JoHan_pretrained --local-dir assets/JoHan_pretrained
-(cd assets/JoHan_pretrained && shasum -a 256 -c SHA256SUMS)
 ```
 
 The download includes **both** `model.safetensors` and its matching `dino_finetuned.pt`, together with inference configurations. Use these files as a pair. This release provides RAW weights; use `--weights raw` (the default).
@@ -61,7 +60,6 @@ The download includes **both** `model.safetensors` and its matching `dino_finetu
 | Asset | Source | Expected location |
 | --- | --- | --- |
 | DINOv3 implementation | [Meta DINOv3](https://github.com/facebookresearch/dinov3) | `assets/dinov3/` |
-| Original DINOv3 ViT-H/16+ LVD-1689M weights | [DINOv3 model access](https://github.com/facebookresearch/dinov3#pretrained-models) | `assets/dino_pretrained.pth` |
 | WiLoR hand detector (`detector.pt`) | [WiLoR](https://github.com/rolpotamias/WiLoR#installation) | `assets/detector.pt` |
 | Left and right MANO models | [MANO](https://mano.is.tue.mpg.de/) (registration required) | `assets/mano/MANO_LEFT.pkl`, `MANO_RIGHT.pkl` |
 
@@ -73,7 +71,7 @@ git clone https://github.com/facebookresearch/dinov3.git assets/dinov3
 
 Obtain the remaining assets from the linked projects under their respective licenses. The detector must use WiLoR's class convention: `0=left`, `1=right`.
 
-**Why two DINO files?** The current loader constructs the backbone using the original pretrained initialization supplied through `--dino-weights`, then loads the complete fine-tuned state from the JoHan checkpoint directory. The released `dino_finetuned.pt` is a state dictionary for JoHan's feature-extractor wrapper; do not pass it to `--dino-weights`.
+The backbone architecture is constructed from the local DINOv3 checkout, then strictly loaded from the matching trained `checkpoint/dino_finetuned.pt`. No original pretrained DINOv3 weight file is needed. The coordinate scale is stored in `model_config.yaml`.
 
 Expected layout:
 
@@ -82,13 +80,10 @@ assets/
 ├── JoHan_pretrained/
 │   ├── model_config.yaml
 │   ├── run_config.yaml
-│   ├── SHA256SUMS
 │   └── checkpoint/
 │       ├── model.safetensors
-│       ├── dino_finetuned.pt
-│       └── train_meta.json
+│       └── dino_finetuned.pt
 ├── dinov3/
-├── dino_pretrained.pth
 ├── detector.pt
 └── mano/
     ├── MANO_LEFT.pkl
@@ -103,7 +98,6 @@ Provide an RGB video and its calibrated camera intrinsics:
 johan --video /path/to/video.mp4 \
   --checkpoint assets/JoHan_pretrained/checkpoint \
   --dino-repo assets/dinov3 \
-  --dino-weights assets/dino_pretrained.pth \
   --mano-root assets/mano \
   --detector assets/detector.pt \
   --intrinsics 1000 1000 640 360 \

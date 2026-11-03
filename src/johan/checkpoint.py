@@ -1,7 +1,6 @@
 """Read legacy dataclass YAML as plain data; never import its Python tags."""
 from pathlib import Path
 import dataclasses
-import json
 import yaml
 from safetensors.torch import load_file
 from .hand_network_perjoint import HandDenoiserPerJoint, HandDenoiserPerJointConfig
@@ -31,9 +30,6 @@ def load_model(checkpoint, device, weights='raw'):
     unknown = set(values)-known
     if unknown:
         raise ValueError(f'Unsupported model config fields: {sorted(unknown)}')
-    meta = checkpoint/'train_meta.json'
-    if meta.exists() and 'coord_range' in values:
-        values['coord_range'] = json.loads(meta.read_text()).get('coord_range',values['coord_range'])
     cfg = cls(**values)
     if not cfg.predict_2Dpose or getattr(cfg,'pure_3d',False) or getattr(cfg,'pose2d_state_only',False) or getattr(cfg,'predict_global_pose',False):
         raise ValueError('This release supports joint 2D–3D hand checkpoints with PnP global pose.')

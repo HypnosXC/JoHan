@@ -8,7 +8,9 @@ class DinoFeatureExtractor(nn.Module):
         self.device = torch.device(device)
         dtype = torch.bfloat16 if self.device.type == 'cuda' else torch.float32
         self.model = torch.hub.load(str(repo), model_name, source='local',
-                                   weights=str(weights)).to(device=self.device, dtype=dtype).eval()
+                                   pretrained=False)
+        self.load_state_dict(torch.load(weights, map_location='cpu', weights_only=True), strict=True)
+        self.to(device=self.device, dtype=dtype).eval()
         self.requires_grad_(False)
 
     @torch.inference_mode()

@@ -33,7 +33,6 @@ def main():
     for name in names: shutil.copy2(a.source/name,dest/name)
     (a.destination/'model_config.yaml').write_text(yaml.safe_dump(model,sort_keys=True))
     (a.destination/'run_config.yaml').write_text(yaml.safe_dump({k:run[k] for k in keys},sort_keys=True))
-    (dest/'train_meta.json').write_text(json.dumps({'coord_range':model['coord_range']},indent=2)+'\n')
     print(dest)
 
 if __name__=='__main__': main()
