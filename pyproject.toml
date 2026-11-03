@@ -9,7 +9,7 @@ description = "Video-conditioned joint 2D–3D hand motion recovery"
 readme = "README.md"
 requires-python = ">=3.12"
 license = {file = "LICENSE"}
-dependencies = ["torch>=2.7,<3", "numpy", "opencv-python", "scipy", "PyYAML", "safetensors", "einops", "jaxtyping", "rotary-embedding-torch", "smplx", "tqdm", "ultralytics"]
+dependencies = ["torch>=2.7,<3", "torchvision", "numpy", "opencv-python", "scipy", "PyYAML", "safetensors", "einops", "jaxtyping", "rotary-embedding-torch", "smplx", "tqdm", "ultralytics"]
 
 [project.scripts]
 johan = "johan.cli:main"

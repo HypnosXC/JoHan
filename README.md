@@ -84,3 +84,16 @@ Reusable tensor/transform/transformer utilities derive from the MIT-licensed
 upstream project by Brent Yi. Its copyright and license are preserved in LICENSE.
 DINOv3, MANO and the WiLoR detector are separate assets governed by their own
 licenses; this repository does not redistribute them.
+
+### Prepare an inference-only checkpoint bundle
+
+After installation, maintainers can strip training files and Python YAML tags:
+
+```bash
+python scripts/export_checkpoint.py /path/to/checkpoints_145000 /new/release/vith512 --weights raw
+```
+
+Pass `/new/release/vith512/checkpoint` to `--checkpoint`. The export contains only
+paired model/backbone weights, plain model/input configuration, and the
+checkpoint's coordinate scale. It excludes optimizer, scheduler, RNG, dataset
+paths and training logs. The destination must be new.
