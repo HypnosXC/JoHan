@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+checkpoints/
+assets/
+outputs/
+*.pt
+*.pth
+*.pkl
+*.safetensors
+*.mp4
+*.npz
